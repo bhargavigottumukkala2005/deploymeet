@@ -9,7 +9,3 @@ services:
         value: _6KMf8b7RJuB10ydU_bKGA
       - key: CLIENT_SECRET
         value: HbQRz9vf3hAFeqQXD1uat2biYCTYS4gh
-    requirements:
-      - type: pip
-        name: requirements
-        path: requirements.txt
