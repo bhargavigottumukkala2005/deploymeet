@@ -32,7 +32,46 @@ def save_tokens(tokens):
 @app.route('/')
 def home():
     form_html = '''
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        form {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        label {
+            display: block;
+            margin: 10px 0 5px;
+        }
+        input, button {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background: #007bff;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+    </style>
     <form action="/schedule" method="post">
+        <label for="topic">Meeting Topic:</label>
+        <input type="text" id="topic" name="topic" required>
         <label for="date">Date (YYYY-MM-DD):</label>
         <input type="date" id="date" name="date" required>
         <label for="time">Time (HH:MM):</label>
@@ -44,6 +83,7 @@ def home():
 
 @app.route('/schedule', methods=['POST'])
 def schedule():
+    topic = request.form['topic']
     date = request.form['date']
     time = request.form['time']
     start_time = f"{date}T{time}:00"
@@ -51,7 +91,7 @@ def schedule():
     start_time_utc = start_time_ist.astimezone(pytz.utc).isoformat()
     auth_url = (
         f"https://zoom.us/oauth/authorize?response_type=code&client_id={CLIENT_ID}&scope=meeting:write:meeting"
-        f"&redirect_uri={REDIRECT_URI}&state={start_time_utc}"
+        f"&redirect_uri={REDIRECT_URI}&state={start_time_utc}#{topic}"
     )
     return redirect(auth_url)
 
@@ -59,7 +99,8 @@ def schedule():
 @app.route('/zoom/callback')
 def callback():
     code = request.args.get('code')
-    start_time = request.args.get('state')  # Retrieve the start_time from the state parameter
+    state = request.args.get('state')
+    start_time, topic = state.split('#')  # Retrieve the start_time and topic from the state parameter
     token_url = "https://zoom.us/oauth/token"
     headers = {
         "Authorization": f"Basic {base64.b64encode((CLIENT_ID + ':' + CLIENT_SECRET).encode()).decode()}",
@@ -75,7 +116,7 @@ def callback():
     if 'access_token' in response_data:
         save_tokens(response_data)
         access_token = response_data.get("access_token")
-        join_url = schedule_meeting(access_token, start_time)
+        join_url = schedule_meeting(access_token, start_time, topic)
         if join_url:
             return redirect(join_url)
         else:
@@ -101,14 +142,14 @@ def refresh_access_token(refresh_token):
     return response_data.get("access_token")
 
 # Step 4: Schedule a Meeting and Get Join URL
-def schedule_meeting(access_token, start_time):
+def schedule_meeting(access_token, start_time, topic):
     headers = {
         'Authorization': f'Bearer {access_token}',
         'Content-Type': 'application/json'
     }
     
     meeting_details = {
-        "topic": "Automated Meeting",
+        "topic": topic,
         "type": 2,  # Scheduled meeting
         "start_time": start_time,  # Meeting start time in ISO 8601 format
         "duration": 60,  # Duration in minutes
@@ -141,3 +182,4 @@ def schedule_meeting(access_token, start_time):
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
