@@ -37,59 +37,77 @@ def save_tokens(tokens):
 # Step 1: Get Authorization URL
 @app.route('/')
 def home():
-    form_html = '''
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f9;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        form {
-            background: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            width: 100%;
-            max-width: 400px;
-        }
-        label {
-            display: block;
-            margin: 10px 0 5px;
-            font-weight: bold;
-        }
-        input, button {
-            width: 100%;
-            padding: 10px;
-            margin: 5px 0;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-        button {
-            background: #007bff;
-            color: #fff;
-            border: none;
-            cursor: pointer;
-            margin-top: 10px;
-        }
-        button:hover {
-            background: #0056b3;
-        }
-    </style>
-    <form action="/schedule" method="post">
-        <label for="topic">Meeting Topic:</label>
-        <input type="text" id="topic" name="topic" required>
-        <label for="date">Date (YYYY-MM-DD):</label>
-        <input type="date" id="date" name="date" required>
-        <label for="time">Time (HH:MM):</label>
-        <input type="time" id="time" name="time" required>
-        <button type="submit">Schedule Meeting</button>
-    </form>
-    '''
-    return render_template_string(form_html)
+    tokens = load_tokens()
+    if 'access_token' in tokens:
+        return render_template_string('''
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    background-color: #f4f4f9;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    margin: 0;
+                }
+                form {
+                    background: #fff;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                    width: 100%;
+                    max-width: 400px;
+                }
+                label {
+                    display: block;
+                    margin: 10px 0 5px;
+                    font-weight: bold;
+                    color: #333;
+                }
+                input, button {
+                    width: 100%;
+                    padding: 10px;
+                    margin: 5px 0;
+                    border: 1px solid #ccc;
+                    border-radius: 4px;
+                    font-size: 16px;
+                }
+                button {
+                    background: #007bff;
+                    color: #fff;
+                    border: none;
+                    cursor: pointer;
+                    margin-top: 10px;
+                }
+                button:hover {
+                    background: #0056b3;
+                }
+                .error {
+                    color: red;
+                    font-size: 14px;
+                    margin-top: 10px;
+                }
+            </style>
+            <form action="/schedule" method="post">
+                <label for="topic">Meeting Topic:</label>
+                <input type="text" id="topic" name="topic" required>
+                <label for="date">Date (YYYY-MM-DD):</label>
+                <input type="date" id="date" name="date" required>
+                <label for="time">Time (HH:MM):</label>
+                <input type="time" id="time" name="time" required>
+                <button type="submit">Schedule Meeting</button>
+            </form>
+        ''')
+    else:
+        return redirect(url_for('authorize'))
+
+@app.route('/authorize')
+def authorize():
+    state_param = urllib.parse.quote("placeholder_state")
+    auth_url = (
+        f"https://zoom.us/oauth/authorize?response_type=code&client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&state={state_param}&prompt=none"
+    )
+    return redirect(auth_url)
 
 @app.route('/schedule', methods=['POST'])
 def schedule():
@@ -109,12 +127,19 @@ def schedule():
         encoded_state = urllib.parse.quote(state_param)
         logger.info(f"Encoded state parameter for auth URL: {encoded_state}")
         
-        # First attempt without prompt
-        auth_url = (
-            f"https://zoom.us/oauth/authorize?response_type=code&client_id={CLIENT_ID}&scope=meeting:write:meeting"
-            f"&redirect_uri={REDIRECT_URI}&state={encoded_state}&prompt=none"
-        )
-        return redirect(auth_url)
+        tokens = load_tokens()
+        if 'access_token' in tokens:
+            access_token = tokens['access_token']
+            join_url = schedule_meeting(access_token, start_time_utc, topic)
+            if join_url:
+                return redirect(join_url)
+            else:
+                return "Failed to schedule meeting."
+        else:
+            auth_url = (
+                f"https://zoom.us/oauth/authorize?response_type=code&client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&state={encoded_state}&prompt=none"
+            )
+            return redirect(auth_url)
     except Exception as e:
         logger.error(f"Error scheduling meeting: {e}")
         return f"Failed to schedule meeting: {e}"
@@ -127,18 +152,14 @@ def callback():
         error = request.args.get('error')
         
         if error:
-            # If there's an error (likely because prompt=none failed), ask for login
             auth_url = (
-                f"https://zoom.us/oauth/authorize?response_type=code&client_id={CLIENT_ID}&scope=meeting:write:meeting"
-                f"&redirect_uri={REDIRECT_URI}&state={encoded_state}"
+                f"https://zoom.us/oauth/authorize?response_type=code&client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&state={encoded_state}"
             )
             return redirect(auth_url)
         
-        # Decode state parameter
         state = urllib.parse.unquote(encoded_state)
         logger.info(f"Decoded state parameter: {state}")
         
-        # Split state to get start_time and topic
         if state and '#' in state:
             start_time, topic = state.split('#', 1)
         else:
