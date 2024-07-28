@@ -2,7 +2,9 @@ import requests
 import json
 import base64
 import os
-from flask import Flask, request, redirect
+from datetime import datetime
+import pytz
+from flask import Flask, request, redirect, render_template_string
 
 app = Flask(__name__)
 
@@ -12,6 +14,7 @@ CLIENT_SECRET = 'HbQRz9vf3hAFeqQXD1uat2biYCTYS4gh'
 REDIRECT_URI = 'https://deploymeet.onrender.com/zoom/callback'
 
 TOKEN_FILE = 'zoom_tokens.json'
+IST = pytz.timezone('Asia/Kolkata')  # IST Timezone
 
 # Helper function to load tokens from a file
 def load_tokens():
@@ -28,9 +31,27 @@ def save_tokens(tokens):
 # Step 1: Get Authorization URL
 @app.route('/')
 def home():
+    form_html = '''
+    <form action="/schedule" method="post">
+        <label for="date">Date (YYYY-MM-DD):</label>
+        <input type="date" id="date" name="date" required>
+        <label for="time">Time (HH:MM):</label>
+        <input type="time" id="time" name="time" required>
+        <button type="submit">Schedule Meeting</button>
+    </form>
+    '''
+    return render_template_string(form_html)
+
+@app.route('/schedule', methods=['POST'])
+def schedule():
+    date = request.form['date']
+    time = request.form['time']
+    start_time = f"{date}T{time}:00"
+    start_time_ist = datetime.fromisoformat(start_time).replace(tzinfo=IST)
+    start_time_utc = start_time_ist.astimezone(pytz.utc).isoformat()
     auth_url = (
         f"https://zoom.us/oauth/authorize?response_type=code&client_id={CLIENT_ID}&scope=meeting:write:meeting"
-        f"&redirect_uri={REDIRECT_URI}"
+        f"&redirect_uri={REDIRECT_URI}&state={start_time_utc}"
     )
     return redirect(auth_url)
 
@@ -38,6 +59,7 @@ def home():
 @app.route('/zoom/callback')
 def callback():
     code = request.args.get('code')
+    start_time = request.args.get('state')  # Retrieve the start_time from the state parameter
     token_url = "https://zoom.us/oauth/token"
     headers = {
         "Authorization": f"Basic {base64.b64encode((CLIENT_ID + ':' + CLIENT_SECRET).encode()).decode()}",
@@ -53,7 +75,7 @@ def callback():
     if 'access_token' in response_data:
         save_tokens(response_data)
         access_token = response_data.get("access_token")
-        join_url = schedule_meeting(access_token)
+        join_url = schedule_meeting(access_token, start_time)
         if join_url:
             return redirect(join_url)
         else:
@@ -79,7 +101,7 @@ def refresh_access_token(refresh_token):
     return response_data.get("access_token")
 
 # Step 4: Schedule a Meeting and Get Join URL
-def schedule_meeting(access_token):
+def schedule_meeting(access_token, start_time):
     headers = {
         'Authorization': f'Bearer {access_token}',
         'Content-Type': 'application/json'
@@ -88,7 +110,7 @@ def schedule_meeting(access_token):
     meeting_details = {
         "topic": "Automated Meeting",
         "type": 2,  # Scheduled meeting
-        "start_time": "2024-06-08T11:20:00Z",  # Meeting start time in ISO 8601 format
+        "start_time": start_time,  # Meeting start time in ISO 8601 format
         "duration": 60,  # Duration in minutes
         "timezone": "UTC",
         "agenda": "This is an automated meeting",
