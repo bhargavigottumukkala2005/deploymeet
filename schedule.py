@@ -111,6 +111,10 @@ def callback():
         code = request.args.get('code')
         state = request.args.get('state')
         start_time, topic = state.split('#')  # Retrieve the start_time and topic from the state parameter
+
+        logger.info(f"Authorization code received: {code}")
+        logger.info(f"Start time: {start_time}, Topic: {topic}")
+
         token_url = "https://zoom.us/oauth/token"
         headers = {
             "Authorization": f"Basic {base64.b64encode((CLIENT_ID + ':' + CLIENT_SECRET).encode()).decode()}",
@@ -123,6 +127,9 @@ def callback():
         }
         response = requests.post(token_url, headers=headers, data=payload)
         response_data = response.json()
+
+        logger.info(f"Token response data: {response_data}")
+
         if 'access_token' in response_data:
             save_tokens(response_data)
             access_token = response_data.get("access_token")
@@ -133,10 +140,10 @@ def callback():
                 return "Failed to schedule meeting."
         else:
             logger.error(f"Failed to obtain access token: {response_data}")
-            return "Failed to obtain access token."
+            return f"Failed to obtain access token: {response_data}"
     except Exception as e:
         logger.error(f"Error in callback: {e}")
-        return "Failed to process callback."
+        return f"Failed to process callback: {e}"
 
 # Step 3: Refresh Access Token
 def refresh_access_token(refresh_token):
@@ -205,5 +212,3 @@ def schedule_meeting(access_token, start_time, topic):
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-
-
