@@ -95,14 +95,22 @@ def schedule():
         start_time = f"{date}T{time}:00"
         start_time_ist = datetime.fromisoformat(start_time).replace(tzinfo=IST)
         start_time_utc = start_time_ist.astimezone(pytz.utc).isoformat()
+        
+        # Validate start_time_utc and topic before using them
+        if not start_time_utc or not topic:
+            raise ValueError("Start time or topic is missing")
+        
+        state_param = f"{start_time_utc}#{topic}"
+        logger.info(f"State parameter for auth URL: {state_param}")
+        
         auth_url = (
             f"https://zoom.us/oauth/authorize?response_type=code&client_id={CLIENT_ID}&scope=meeting:write:meeting"
-            f"&redirect_uri={REDIRECT_URI}&state={start_time_utc}#{topic}"
+            f"&redirect_uri={REDIRECT_URI}&state={state_param}"
         )
         return redirect(auth_url)
     except Exception as e:
         logger.error(f"Error scheduling meeting: {e}")
-        return "Failed to schedule meeting."
+        return f"Failed to schedule meeting: {e}"
 
 # Step 2: Exchange Authorization Code for Access Token
 @app.route('/zoom/callback')
@@ -220,3 +228,4 @@ def schedule_meeting(access_token, start_time, topic):
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
