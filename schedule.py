@@ -7,9 +7,9 @@ from flask import Flask, request, redirect
 app = Flask(__name__)
 
 # Zoom OAuth credentials
-CLIENT_ID = 'UiXlhvUBTBekA95ED_mgw'
-CLIENT_SECRET = '1SKyQiv0Qu8UZ5FhD082Z5uEgw1qCjkC'
-REDIRECT_URI = 'https://durgapython-3.onrender.com/zoom/callback'
+CLIENT_ID = '_6KMf8b7RJuB10ydU_bKGA'
+CLIENT_SECRET = 'HbQRz9vf3hAFeqQXD1uat2biYCTYS4gh'
+REDIRECT_URI = 'https://deploymeet.onrender.com/zoom/callback'
 
 TOKEN_FILE = 'zoom_tokens.json'
 
