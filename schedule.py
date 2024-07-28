@@ -110,7 +110,15 @@ def callback():
     try:
         code = request.args.get('code')
         state = request.args.get('state')
-        start_time, topic = state.split('#')  # Retrieve the start_time and topic from the state parameter
+        
+        # Add logging to debug state
+        logger.info(f"State parameter: {state}")
+        
+        # Split state to get start_time and topic
+        if '#' in state:
+            start_time, topic = state.split('#', 1)  # Only split once to avoid issues with extra #
+        else:
+            raise ValueError("State parameter is not properly formatted")
 
         logger.info(f"Authorization code received: {code}")
         logger.info(f"Start time: {start_time}, Topic: {topic}")
