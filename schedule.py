@@ -123,7 +123,7 @@ def callback():
         logger.info(f"State parameter: {state}")
         
         # Split state to get start_time and topic
-        if '#' in state:
+        if state and '#' in state:
             start_time, topic = state.split('#', 1)  # Only split once to avoid issues with extra #
         else:
             raise ValueError("State parameter is not properly formatted")
@@ -228,4 +228,3 @@ def schedule_meeting(access_token, start_time, topic):
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-
