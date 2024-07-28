@@ -4,7 +4,7 @@ import base64
 import os
 from datetime import datetime
 import pytz
-from flask import Flask, request, redirect, render_template_string
+from flask import Flask, request, redirect, render_template_string, url_for
 import logging
 import urllib.parse
 
@@ -53,10 +53,13 @@ def home():
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
         }
         label {
             display: block;
             margin: 10px 0 5px;
+            font-weight: bold;
         }
         input, button {
             width: 100%;
@@ -70,6 +73,7 @@ def home():
             color: #fff;
             border: none;
             cursor: pointer;
+            margin-top: 10px;
         }
         button:hover {
             background: #0056b3;
@@ -105,24 +109,30 @@ def schedule():
         encoded_state = urllib.parse.quote(state_param)
         logger.info(f"Encoded state parameter for auth URL: {encoded_state}")
         
+        # First attempt without prompt
         auth_url = (
             f"https://zoom.us/oauth/authorize?response_type=code&client_id={CLIENT_ID}&scope=meeting:write:meeting"
-            f"&redirect_uri={REDIRECT_URI}&state={encoded_state}"
+            f"&redirect_uri={REDIRECT_URI}&state={encoded_state}&prompt=none"
         )
         return redirect(auth_url)
     except Exception as e:
         logger.error(f"Error scheduling meeting: {e}")
         return f"Failed to schedule meeting: {e}"
 
-# Step 2: Exchange Authorization Code for Access Token
 @app.route('/zoom/callback')
 def callback():
     try:
         code = request.args.get('code')
         encoded_state = request.args.get('state')
+        error = request.args.get('error')
         
-        # Add logging to debug state
-        logger.info(f"Encoded state parameter: {encoded_state}")
+        if error:
+            # If there's an error (likely because prompt=none failed), ask for login
+            auth_url = (
+                f"https://zoom.us/oauth/authorize?response_type=code&client_id={CLIENT_ID}&scope=meeting:write:meeting"
+                f"&redirect_uri={REDIRECT_URI}&state={encoded_state}"
+            )
+            return redirect(auth_url)
         
         # Decode state parameter
         state = urllib.parse.unquote(encoded_state)
@@ -130,12 +140,9 @@ def callback():
         
         # Split state to get start_time and topic
         if state and '#' in state:
-            start_time, topic = state.split('#', 1)  # Only split once to avoid issues with extra #
+            start_time, topic = state.split('#', 1)
         else:
             raise ValueError("State parameter is not properly formatted")
-
-        logger.info(f"Authorization code received: {code}")
-        logger.info(f"Start time: {start_time}, Topic: {topic}")
 
         token_url = "https://zoom.us/oauth/token"
         headers = {
@@ -150,8 +157,6 @@ def callback():
         response = requests.post(token_url, headers=headers, data=payload)
         response_data = response.json()
 
-        logger.info(f"Token response data: {response_data}")
-
         if 'access_token' in response_data:
             save_tokens(response_data)
             access_token = response_data.get("access_token")
@@ -161,10 +166,8 @@ def callback():
             else:
                 return "Failed to schedule meeting."
         else:
-            logger.error(f"Failed to obtain access token: {response_data}")
             return f"Failed to obtain access token: {response_data}"
     except Exception as e:
-        logger.error(f"Error in callback: {e}")
         return f"Failed to process callback: {e}"
 
 # Step 3: Refresh Access Token
@@ -185,7 +188,6 @@ def refresh_access_token(refresh_token):
             save_tokens(response_data)
         return response_data.get("access_token")
     except Exception as e:
-        logger.error(f"Error refreshing access token: {e}")
         return None
 
 # Step 4: Schedule a Meeting and Get Join URL
@@ -198,9 +200,9 @@ def schedule_meeting(access_token, start_time, topic):
         
         meeting_details = {
             "topic": topic,
-            "type": 2,  # Scheduled meeting
-            "start_time": start_time,  # Meeting start time in ISO 8601 format
-            "duration": 60,  # Duration in minutes
+            "type": 2,
+            "start_time": start_time,
+            "duration": 60,
             "timezone": "UTC",
             "agenda": "This is an automated meeting",
             "settings": {
@@ -210,14 +212,14 @@ def schedule_meeting(access_token, start_time, topic):
                 "mute_upon_entry": True,
                 "watermark": True,
                 "use_pmi": False,
-                "approval_type": 0,  # Automatically approve
-                "registration_type": 1,  # Attendees register once and can attend any of the occurrences
-                "audio": "both",  # Both telephony and VoIP
+                "approval_type": 0,
+                "registration_type": 1,
+                "audio": "both",
                 "auto_recording": "cloud"
             }
         }
         
-        user_id = 'me'  # Use 'me' for the authenticated user, or replace with a specific user ID
+        user_id = 'me'
         response = requests.post(f'https://api.zoom.us/v2/users/{user_id}/meetings', headers=headers, json=meeting_details)
         
         if response.status_code == 201:
@@ -225,10 +227,8 @@ def schedule_meeting(access_token, start_time, topic):
             join_url = meeting.get('join_url')
             return join_url
         else:
-            logger.error(f"Failed to schedule meeting: {response.json()}")
             return None
     except Exception as e:
-        logger.error(f"Error scheduling meeting: {e}")
         return None
 
 if __name__ == "__main__":
