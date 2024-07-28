@@ -6,6 +6,7 @@ from datetime import datetime
 import pytz
 from flask import Flask, request, redirect, render_template_string
 import logging
+import urllib.parse
 
 app = Flask(__name__)
 
@@ -101,11 +102,12 @@ def schedule():
             raise ValueError("Start time or topic is missing")
         
         state_param = f"{start_time_utc}#{topic}"
-        logger.info(f"State parameter for auth URL: {state_param}")
+        encoded_state = urllib.parse.quote(state_param)
+        logger.info(f"Encoded state parameter for auth URL: {encoded_state}")
         
         auth_url = (
             f"https://zoom.us/oauth/authorize?response_type=code&client_id={CLIENT_ID}&scope=meeting:write:meeting"
-            f"&redirect_uri={REDIRECT_URI}&state={state_param}"
+            f"&redirect_uri={REDIRECT_URI}&state={encoded_state}"
         )
         return redirect(auth_url)
     except Exception as e:
@@ -117,10 +119,14 @@ def schedule():
 def callback():
     try:
         code = request.args.get('code')
-        state = request.args.get('state')
+        encoded_state = request.args.get('state')
         
         # Add logging to debug state
-        logger.info(f"State parameter: {state}")
+        logger.info(f"Encoded state parameter: {encoded_state}")
+        
+        # Decode state parameter
+        state = urllib.parse.unquote(encoded_state)
+        logger.info(f"Decoded state parameter: {state}")
         
         # Split state to get start_time and topic
         if state and '#' in state:
