@@ -2,7 +2,7 @@ import requests
 import json
 import base64
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
 from flask import Flask, request, redirect, render_template_string
 import logging
@@ -94,7 +94,7 @@ def schedule():
         date = request.form['date']
         time = request.form['time']
         start_time = f"{date}T{time}:00"
-        start_time_ist = datetime.fromisoformat(start_time).replace(tzinfo=IST)
+        start_time_ist = IST.localize(datetime.strptime(start_time, '%Y-%m-%dT%H:%M:%S'))
         start_time_utc = start_time_ist.astimezone(pytz.utc).isoformat()
         
         # Validate start_time_utc and topic before using them
